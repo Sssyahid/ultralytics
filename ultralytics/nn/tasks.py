@@ -1555,6 +1555,8 @@ def parse_model(d, ch, verbose=True):
             SCDown,
             C2fCIB,
             A2C2f,
+            BottleneckDCN,
+            C3k2DCN,
         }
     )
     repeat_modules = frozenset(  # modules with 'repeat' arguments
@@ -1574,6 +1576,7 @@ def parse_model(d, ch, verbose=True):
             C2fCIB,
             C2PSA,
             A2C2f,
+            C3k2DCN,
         }
     )
     for i, (f, n, m, args) in enumerate(d["backbone"] + d["head"]):  # from, number, module, args
@@ -1601,7 +1604,7 @@ def parse_model(d, ch, verbose=True):
             if m in repeat_modules:
                 args.insert(2, n)  # number of repeats
                 n = 1
-            if m is C3k2:  # for M/L/X sizes
+            if m in (C3k2, C3k2DCN):  # for M/L/X sizes
                 legacy = False
                 if scale in "mlx":
                     args[3] = True

@@ -1947,57 +1947,46 @@ class SAVPE(nn.Module):
 
 #batas atas
 class BottleneckDCN(nn.Module):
-    """Bottleneck dengan DCN pada conv pertama."""
+    """Bottleneck dengan DCN di salah satu conv."""
 
-    def __init__(self, c1, c2, shortcut=True, g=1, e=0.5, dcn_first=True):
+    def __init__(
+        self, c1: int, c2: int, shortcut: bool = True, g: int = 1, k: tuple[int, int] = (3, 3), e: float = 0.5
+    ):
+        """
+        Sama persis dengan Bottleneck, tapi memakai DCN pada cv1 atau cv2.
+        """
         super().__init__()
         c_ = int(c2 * e)  # hidden channels
 
-        # Conv pertama diganti DCN (atau sebaliknya kalau mau di cv2)
-        if dcn_first:
-            self.cv1 = DCNConv(c1, c_, k=3, s=1, p=1, g=g)  # <-- ini DCN kamu
-            self.cv2 = Conv(c_, c2, k=3, s=1, p=1, g=g)
-        else:
-            self.cv1 = Conv(c1, c_, k=3, s=1, p=1, g=g)
-            self.cv2 = DCNConv(c_, c2, k=3, s=1, p=1, g=g)
+        # Di sini kamu pakai modul DCN-mu, misal DCNConv
+        # ganti DCNConv dengan nama class DCN yang kamu punya
+        self.cv1 = DCNConv(c1, c_, k[0], 1)           # ← DCN
+        self.cv2 = Conv(c_, c2, k[1], 1, g=g)         # ← Conv biasa (boleh kebalik kalau mau)
 
         self.add = shortcut and c1 == c2
 
-    def forward(self, x):
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
         y = self.cv2(self.cv1(x))
         return x + y if self.add else y
 
+
 class C3k2DCN(C2f):
-    """C3k2 dengan integrasi DCN di dalam bloknya."""
+    """C3k2 tapi bottleneck-nya pakai DCN."""
 
     def __init__(
-        self,
-        c1: int,
-        c2: int,
-        n: int = 1,
-        c3k: bool = False,
-        e: float = 0.5,
-        g: int = 1,
-        shortcut: bool = True,
-        dcn_first: bool = True,
+        self, c1: int, c2: int, n: int = 1, c3k: bool = False, e: float = 0.5, g: int = 1, shortcut: bool = True
     ):
         """
-        Args:
-            c1 (int): Input channels.
-            c2 (int): Output channels.
-            n (int): Number of blocks.
-            c3k (bool): Kalau True, pakai C3k berbasis DCN (kalau kamu buat).
-            e (float): Expansion ratio.
-            g (int): Groups.
-            shortcut (bool): Pakai shortcut atau tidak.
-            dcn_first (bool): DCN di conv pertama atau kedua.
+        Signature harus sama persis dengan C3k2:
+        c1, c2, n, c3k, e, g, shortcut
         """
         super().__init__(c1, c2, n, shortcut, g, e)
 
-        # Versi paling sederhana: pakai BottleneckDCN
         self.m = nn.ModuleList(
-            BottleneckDCN(self.c, self.c, shortcut, g, e=e, dcn_first=dcn_first)
+            C3k(self.c, self.c, 2, shortcut, g) if c3k
+            else BottleneckDCN(self.c, self.c, shortcut, g)   # ← ganti ke BottleneckDCN
             for _ in range(n)
         )
+
 
 #batas bawah

@@ -181,4 +181,6 @@ __all__ = (
     "YOLOEDetect",
     "YOLOESegment",
     "v10Detect",
+    "BottleneckDCN",
+    "C3k2DCN",
 )

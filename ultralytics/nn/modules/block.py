@@ -53,65 +53,8 @@ __all__ = (
     "SCDown",
     "TorchVision",
     "BottleneckDCN",
-    "C3k2DCN"
+    "C3k2DCN",
 )
-#batas atas
-class BottleneckDCN(nn.Module):
-    """Bottleneck dengan DCN pada conv pertama."""
-
-    def __init__(self, c1, c2, shortcut=True, g=1, e=0.5, dcn_first=True):
-        super().__init__()
-        c_ = int(c2 * e)  # hidden channels
-
-        # Conv pertama diganti DCN (atau sebaliknya kalau mau di cv2)
-        if dcn_first:
-            self.cv1 = DCNConv(c1, c_, k=3, s=1, p=1, g=g)  # <-- ini DCN kamu
-            self.cv2 = Conv(c_, c2, k=3, s=1, p=1, g=g)
-        else:
-            self.cv1 = Conv(c1, c_, k=3, s=1, p=1, g=g)
-            self.cv2 = DCNConv(c_, c2, k=3, s=1, p=1, g=g)
-
-        self.add = shortcut and c1 == c2
-
-    def forward(self, x):
-        y = self.cv2(self.cv1(x))
-        return x + y if self.add else y
-
-class C3k2DCN(C2f):
-    """C3k2 dengan integrasi DCN di dalam bloknya."""
-
-    def __init__(
-        self,
-        c1: int,
-        c2: int,
-        n: int = 1,
-        c3k: bool = False,
-        e: float = 0.5,
-        g: int = 1,
-        shortcut: bool = True,
-        dcn_first: bool = True,
-    ):
-        """
-        Args:
-            c1 (int): Input channels.
-            c2 (int): Output channels.
-            n (int): Number of blocks.
-            c3k (bool): Kalau True, pakai C3k berbasis DCN (kalau kamu buat).
-            e (float): Expansion ratio.
-            g (int): Groups.
-            shortcut (bool): Pakai shortcut atau tidak.
-            dcn_first (bool): DCN di conv pertama atau kedua.
-        """
-        super().__init__(c1, c2, n, shortcut, g, e)
-
-        # Versi paling sederhana: pakai BottleneckDCN
-        self.m = nn.ModuleList(
-            BottleneckDCN(self.c, self.c, shortcut, g, e=e, dcn_first=dcn_first)
-            for _ in range(n)
-        )
-
-#batas bawah
-
 
 class DFL(nn.Module):
     """Integral module of Distribution Focal Loss (DFL).
@@ -2001,3 +1944,60 @@ class SAVPE(nn.Module):
         aggregated = score.transpose(-2, -3) @ x.reshape(B, self.c, C // self.c, -1).transpose(-1, -2)
 
         return F.normalize(aggregated.transpose(-2, -3).reshape(B, Q, -1), dim=-1, p=2)
+
+#batas atas
+class BottleneckDCN(nn.Module):
+    """Bottleneck dengan DCN pada conv pertama."""
+
+    def __init__(self, c1, c2, shortcut=True, g=1, e=0.5, dcn_first=True):
+        super().__init__()
+        c_ = int(c2 * e)  # hidden channels
+
+        # Conv pertama diganti DCN (atau sebaliknya kalau mau di cv2)
+        if dcn_first:
+            self.cv1 = DCNConv(c1, c_, k=3, s=1, p=1, g=g)  # <-- ini DCN kamu
+            self.cv2 = Conv(c_, c2, k=3, s=1, p=1, g=g)
+        else:
+            self.cv1 = Conv(c1, c_, k=3, s=1, p=1, g=g)
+            self.cv2 = DCNConv(c_, c2, k=3, s=1, p=1, g=g)
+
+        self.add = shortcut and c1 == c2
+
+    def forward(self, x):
+        y = self.cv2(self.cv1(x))
+        return x + y if self.add else y
+
+class C3k2DCN(C2f):
+    """C3k2 dengan integrasi DCN di dalam bloknya."""
+
+    def __init__(
+        self,
+        c1: int,
+        c2: int,
+        n: int = 1,
+        c3k: bool = False,
+        e: float = 0.5,
+        g: int = 1,
+        shortcut: bool = True,
+        dcn_first: bool = True,
+    ):
+        """
+        Args:
+            c1 (int): Input channels.
+            c2 (int): Output channels.
+            n (int): Number of blocks.
+            c3k (bool): Kalau True, pakai C3k berbasis DCN (kalau kamu buat).
+            e (float): Expansion ratio.
+            g (int): Groups.
+            shortcut (bool): Pakai shortcut atau tidak.
+            dcn_first (bool): DCN di conv pertama atau kedua.
+        """
+        super().__init__(c1, c2, n, shortcut, g, e)
+
+        # Versi paling sederhana: pakai BottleneckDCN
+        self.m = nn.ModuleList(
+            BottleneckDCN(self.c, self.c, shortcut, g, e=e, dcn_first=dcn_first)
+            for _ in range(n)
+        )
+
+#batas bawah

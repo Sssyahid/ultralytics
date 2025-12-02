@@ -44,26 +44,43 @@ _imshow = cv2.imshow  # copy to avoid recursion errors
 
 def imread(filename: str, flags: int = cv2.IMREAD_COLOR) -> np.ndarray | None:
     """
-    Safe image reader for Kaggle:
-    - Pakai cv2.imread langsung
-    - Raise error kalau gambar tidak bisa dibaca
-    - Pastikan output minimal 3D (H, W, C)
+    Robust image reader with multilanguage filename support.
+
+    - Utama: pakai np.fromfile + cv2.imdecode (mendukung path non-ASCII)
+    - Fallback: pakai cv2.imread biasa kalau cara utama gagal
+    - Selalu mengembalikan np.ndarray (H, W, C) atau raise error jelas
     """
     import cv2
     import numpy as np
 
-    img = cv2.imread(str(filename), flags)
+    img = None
 
-    # Kalau gagal baca gambar, langsung raise error dengan nama file
+    # Coba cara utama (seperti versi resmi Ultralytics)
+    try:
+        file_bytes = np.fromfile(filename, np.uint8)
+        if file_bytes is not None and isinstance(file_bytes, np.ndarray) and file_bytes.size > 0:
+            if str(filename).endswith((".tiff", ".tif")):
+                success, frames = cv2.imdecodemulti(file_bytes, cv2.IMREAD_UNCHANGED)
+                if success:
+                    img = frames[0] if (len(frames) == 1 and frames[0].ndim == 3) else np.stack(frames, axis=2)
+            else:
+                img = cv2.imdecode(file_bytes, flags)
+    except Exception:
+        img = None
+
+    # Fallback: kalau cara di atas gagal, pakai cv2.imread biasa
     if img is None:
-        raise FileNotFoundError(f"[imread] Failed to read image: {filename}")
+        img = cv2.imread(str(filename), flags)
 
-    # Kalau grayscale, jadikan 3D (H, W, 1)
-    if img.ndim == 2:
+    # Kalau masih gagal, kasih error yang jelas (daripada bocor ke warpAffine)
+    if img is None:
+        raise FileNotFoundError(f"[imread] Gagal membaca gambar: {filename}")
+
+    # Pastikan selalu 3 dimensi
+    if img.ndim == 2:  # grayscale
         img = img[..., None]
 
     return img
-
 
 
 def imwrite(filename: str, img: np.ndarray, params: list[int] | None = None) -> bool:

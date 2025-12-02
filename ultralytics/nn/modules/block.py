@@ -2039,20 +2039,20 @@ class C3k2DCN(C2f):
 
 class DCNConv(nn.Module):
     """
-    Wrapper DCN (DeformConv2dPack) agar mirip Conv Ultralytics:
-    - Conv -> BN -> Activation (SiLU default).
+    Wrapper DCN (DeformConv2dPack) supaya mirip Conv Ultralytics:
+    Conv -> BN -> Activation (SiLU).
     """
 
     def __init__(self, c1, c2, k=3, s=1, p=None, g=1, d=1, bias=False):
         super().__init__()
 
-        # handle kernel size
+        # kernel size
         if isinstance(k, tuple):
             ksize = k
         else:
             ksize = (k, k)
 
-        # padding auto seperti autopad
+        # padding (mirip autopad: k//2)
         if p is None:
             pad = (ksize[0] // 2, ksize[1] // 2)
         else:
@@ -2069,7 +2069,7 @@ class DCNConv(nn.Module):
             bias=bias,
         )
         self.bn = nn.BatchNorm2d(c2)
-        self.act = Conv.default_act  # sama seperti Conv Ultralytics
+        self.act = Conv.default_act
 
     def forward(self, x):
         return self.act(self.bn(self.conv(x)))

@@ -44,43 +44,27 @@ _imshow = cv2.imshow  # copy to avoid recursion errors
 
 def imread(filename: str, flags: int = cv2.IMREAD_COLOR) -> np.ndarray | None:
     """
-    Robust image reader with multilanguage filename support.
+    Simple and robust image reader for Kaggle.
 
-    - Utama: pakai np.fromfile + cv2.imdecode (mendukung path non-ASCII)
-    - Fallback: pakai cv2.imread biasa kalau cara utama gagal
-    - Selalu mengembalikan np.ndarray (H, W, C) atau raise error jelas
+    Uses cv2.imread directly.
+    Selalu mengembalikan np.ndarray (H, W, C) atau raise error jika gagal.
     """
     import cv2
     import numpy as np
 
-    img = None
+    img = cv2.imread(str(filename), flags)
 
-    # Coba cara utama (seperti versi resmi Ultralytics)
-    try:
-        file_bytes = np.fromfile(filename, np.uint8)
-        if file_bytes is not None and isinstance(file_bytes, np.ndarray) and file_bytes.size > 0:
-            if str(filename).endswith((".tiff", ".tif")):
-                success, frames = cv2.imdecodemulti(file_bytes, cv2.IMREAD_UNCHANGED)
-                if success:
-                    img = frames[0] if (len(frames) == 1 and frames[0].ndim == 3) else np.stack(frames, axis=2)
-            else:
-                img = cv2.imdecode(file_bytes, flags)
-    except Exception:
-        img = None
-
-    # Fallback: kalau cara di atas gagal, pakai cv2.imread biasa
     if img is None:
-        img = cv2.imread(str(filename), flags)
-
-    # Kalau masih gagal, kasih error yang jelas (daripada bocor ke warpAffine)
-    if img is None:
+        # Daripada lanjut ke augment dan error di warpAffine,
+        # lebih baik berhenti di sini dengan pesan yang jelas.
         raise FileNotFoundError(f"[imread] Gagal membaca gambar: {filename}")
 
     # Pastikan selalu 3 dimensi
-    if img.ndim == 2:  # grayscale
+    if img.ndim == 2:  # grayscale → tambah channel
         img = img[..., None]
 
     return img
+
 
 
 def imwrite(filename: str, img: np.ndarray, params: list[int] | None = None) -> bool:

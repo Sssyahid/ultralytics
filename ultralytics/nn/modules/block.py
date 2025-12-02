@@ -11,6 +11,9 @@ from ultralytics.utils.torch_utils import fuse_conv_and_bn
 
 from .conv import Conv, DWConv, GhostConv, LightConv, RepConv, autopad
 from .transformer import TransformerBlock
+#add
+from mmcv.ops import DeformConv2dPack
+#add
 
 __all__ = (
     "C1",
@@ -1946,22 +1949,47 @@ class SAVPE(nn.Module):
         return F.normalize(aggregated.transpose(-2, -3).reshape(B, Q, -1), dim=-1, p=2)
 
 #batas atas
+# class BottleneckDCN(nn.Module):
+#     """Bottleneck dengan DCN di salah satu conv."""
+
+#     def __init__(
+#         self, c1: int, c2: int, shortcut: bool = True, g: int = 1, k: tuple[int, int] = (3, 3), e: float = 0.5
+#     ):
+#         """
+#         Sama persis dengan Bottleneck, tapi memakai DCN pada cv1 atau cv2.
+#         """
+#         super().__init__()
+#         c_ = int(c2 * e)  # hidden channels
+
+#         # Di sini kamu pakai modul DCN-mu, misal DCNConv
+#         # ganti DCNConv dengan nama class DCN yang kamu punya
+#         self.cv1 = DCNConv(c1, c_, k[0], 1)           # ← DCN
+#         self.cv2 = Conv(c_, c2, k[1], 1, g=g)         # ← Conv biasa (boleh kebalik kalau mau)
+
+#         self.add = shortcut and c1 == c2
+
+#     def forward(self, x: torch.Tensor) -> torch.Tensor:
+#         y = self.cv2(self.cv1(x))
+#         return x + y if self.add else y
+        
 class BottleneckDCN(nn.Module):
-    """Bottleneck dengan DCN di salah satu conv."""
+    """Bottleneck dengan DCN penuh (dua-duanya DCNConv)."""
 
     def __init__(
-        self, c1: int, c2: int, shortcut: bool = True, g: int = 1, k: tuple[int, int] = (3, 3), e: float = 0.5
+        self,
+        c1: int,
+        c2: int,
+        shortcut: bool = True,
+        g: int = 1,
+        k: tuple[int, int] = (3, 3),
+        e: float = 0.5,
     ):
-        """
-        Sama persis dengan Bottleneck, tapi memakai DCN pada cv1 atau cv2.
-        """
         super().__init__()
         c_ = int(c2 * e)  # hidden channels
 
-        # Di sini kamu pakai modul DCN-mu, misal DCNConv
-        # ganti DCNConv dengan nama class DCN yang kamu punya
-        self.cv1 = DCNConv(c1, c_, k[0], 1)           # ← DCN
-        self.cv2 = Conv(c_, c2, k[1], 1, g=g)         # ← Conv biasa (boleh kebalik kalau mau)
+        # DCN di kedua conv
+        self.cv1 = DCNConv(c1, c_, k[0], 1)
+        self.cv2 = DCNConv(c_, c2, k[1], 1, g=g)
 
         self.add = shortcut and c1 == c2
 
@@ -1969,24 +1997,82 @@ class BottleneckDCN(nn.Module):
         y = self.cv2(self.cv1(x))
         return x + y if self.add else y
 
+# class C3k2DCN(C2f):
+#     """C3k2 tapi bottleneck-nya pakai DCN."""
+
+#     def __init__(
+#         self, c1: int, c2: int, n: int = 1, c3k: bool = False, e: float = 0.5, g: int = 1, shortcut: bool = True
+#     ):
+#         """
+#         Signature harus sama persis dengan C3k2:
+#         c1, c2, n, c3k, e, g, shortcut
+#         """
+#         super().__init__(c1, c2, n, shortcut, g, e)
+
+#         self.m = nn.ModuleList(
+#             C3k(self.c, self.c, 2, shortcut, g) if c3k
+#             else BottleneckDCN(self.c, self.c, shortcut, g)   # ← ganti ke BottleneckDCN
+#             for _ in range(n)
+#         )
 
 class C3k2DCN(C2f):
     """C3k2 tapi bottleneck-nya pakai DCN."""
 
     def __init__(
-        self, c1: int, c2: int, n: int = 1, c3k: bool = False, e: float = 0.5, g: int = 1, shortcut: bool = True
+        self,
+        c1: int,
+        c2: int,
+        n: int = 1,
+        c3k: bool = False,
+        e: float = 0.5,
+        g: int = 1,
+        shortcut: bool = True,
     ):
-        """
-        Signature harus sama persis dengan C3k2:
-        c1, c2, n, c3k, e, g, shortcut
-        """
         super().__init__(c1, c2, n, shortcut, g, e)
 
         self.m = nn.ModuleList(
             C3k(self.c, self.c, 2, shortcut, g) if c3k
-            else BottleneckDCN(self.c, self.c, shortcut, g)   # ← ganti ke BottleneckDCN
+            else BottleneckDCN(self.c, self.c, shortcut, g)
             for _ in range(n)
         )
+
+
+class DCNConv(nn.Module):
+    """
+    Wrapper DCN (DeformConv2dPack) agar mirip Conv Ultralytics:
+    - Conv -> BN -> Activation (SiLU default).
+    """
+
+    def __init__(self, c1, c2, k=3, s=1, p=None, g=1, d=1, bias=False):
+        super().__init__()
+
+        # handle kernel size
+        if isinstance(k, tuple):
+            ksize = k
+        else:
+            ksize = (k, k)
+
+        # padding auto seperti autopad
+        if p is None:
+            pad = (ksize[0] // 2, ksize[1] // 2)
+        else:
+            pad = p if isinstance(p, tuple) else (p, p)
+
+        self.conv = DeformConv2dPack(
+            in_channels=c1,
+            out_channels=c2,
+            kernel_size=ksize,
+            stride=s,
+            padding=pad,
+            dilation=d,
+            groups=g,
+            bias=bias,
+        )
+        self.bn = nn.BatchNorm2d(c2)
+        self.act = Conv.default_act  # sama seperti Conv Ultralytics
+
+    def forward(self, x):
+        return self.act(self.bn(self.conv(x)))
 
 
 #batas bawah

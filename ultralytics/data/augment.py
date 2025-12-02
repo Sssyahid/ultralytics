@@ -13,6 +13,14 @@ import torch
 from PIL import Image
 from torch.nn import functional as F
 
+# ====== PATCH KOMPATIBILITAS NUMPY UNTUK np.bool ======
+# Beberapa bagian NumPy lama / Ultralytics masih mengacu ke np.bool.
+# Di NumPy 2.x, atribut ini dihapus, jadi kita buat alias ke bool builtin.
+if not hasattr(np, "bool"):
+    np.bool = bool
+# ======================================================
+
+
 from ultralytics.data.utils import polygons2masks, polygons2masks_overlap
 from ultralytics.utils import LOGGER, IterableSimpleNamespace, colorstr
 from ultralytics.utils.checks import check_version

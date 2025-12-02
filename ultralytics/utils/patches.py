@@ -44,32 +44,26 @@ _imshow = cv2.imshow  # copy to avoid recursion errors
 
 def imread(filename: str, flags: int = cv2.IMREAD_COLOR) -> np.ndarray | None:
     """
-    Safe image reader for Kaggle / Linux environments.
-    Uses cv2.imread directly instead of np.fromfile + cv2.imdecode,
-    which avoids OpenCV buffer errors.
-
-    Args:
-        filename (str): Path to the image file.
-        flags (int): cv2.IMREAD_* flags.
-
-    Returns:
-        np.ndarray | None: Loaded image or None if loading fails.
+    Safe image reader for Kaggle:
+    - Pakai cv2.imread langsung
+    - Raise error kalau gambar tidak bisa dibaca
+    - Pastikan output minimal 3D (H, W, C)
     """
     import cv2
     import numpy as np
 
-    # Read using OpenCV directly (most stable)
     img = cv2.imread(str(filename), flags)
 
-    # If reading fails
+    # Kalau gagal baca gambar, langsung raise error dengan nama file
     if img is None:
-        return None
+        raise FileNotFoundError(f"[imread] Failed to read image: {filename}")
 
-    # Ensure image always has 3 dimensions (H,W,C)
-    if img.ndim == 2:  # grayscale
+    # Kalau grayscale, jadikan 3D (H, W, 1)
+    if img.ndim == 2:
         img = img[..., None]
 
     return img
+
 
 
 def imwrite(filename: str, img: np.ndarray, params: list[int] | None = None) -> bool:

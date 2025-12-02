@@ -2103,33 +2103,35 @@ class Format:
         import torch
         import random
     
-        # 1. Paksa menjadi np.ndarray murni (hilangkan subclass)
+        # Paksa jadi array numpy murni
         img = np.asarray(img)
     
-        # 2. Jika grayscale → tambah channel
+        # Jika grayscale → tambah channel
         if img.ndim == 2:
             img = img[..., None]
     
-        # 3. Jika channel 1 → ulangi jadi 3 channel
+        # Jika 1 channel → ulangi jadi 3
         if img.shape[2] == 1:
             img = np.repeat(img, 3, axis=2)
     
-        # 4. Jika RGBA → potong jadi RGB
+        # Jika 4 channel (RGBA) → ambil 3 channel pertama
         if img.shape[2] == 4:
             img = img[..., :3]
     
-        # 5. Transpose dari HWC → CHW
+        # HWC → CHW
         img = img.transpose(2, 0, 1)
     
-        # 6. BGR flip bawaan Ultralytics
+        # BGR flip bawaan Ultralytics (kalau bgr < 1)
         if img.shape[0] == 3 and random.uniform(0, 1) > self.bgr:
             img = img[::-1]
     
-        # 7. Pastikan kontigu di memory (WAJIB untuk torch.from_numpy)
+        # Pastikan kontigu
         img = np.ascontiguousarray(img)
     
-        # 8. Convert ke Tensor
-        return torch.from_numpy(img)
+        # ⛔️ JANGAN pakai torch.from_numpy lagi
+        # ✅ Pakai torch.tensor yang lebih toleran terhadap tipe
+        return torch.tensor(img)
+
 
     # def _format_img(self, img: np.ndarray) -> torch.Tensor:
     #     """Format an image for YOLO from a Numpy array to a PyTorch tensor.

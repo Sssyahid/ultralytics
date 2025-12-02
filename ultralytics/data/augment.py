@@ -2097,36 +2097,69 @@ class Format:
         if self.batch_idx:
             labels["batch_idx"] = torch.zeros(nl)
         return labels
-
-    def _format_img(self, img: np.ndarray) -> torch.Tensor:
-        """Format an image for YOLO from a Numpy array to a PyTorch tensor.
-
-        This function performs the following operations:
-        1. Ensures the image has 3 dimensions (adds a channel dimension if needed).
-        2. Transposes the image from HWC to CHW format.
-        3. Optionally flips the color channels from RGB to BGR.
-        4. Converts the image to a contiguous array.
-        5. Converts the Numpy array to a PyTorch tensor.
-
-        Args:
-            img (np.ndarray): Input image as a Numpy array with shape (H, W, C) or (H, W).
-
-        Returns:
-            (torch.Tensor): Formatted image as a PyTorch tensor with shape (C, H, W).
-
-        Examples:
-            >>> import numpy as np
-            >>> img = np.random.rand(100, 100, 3)
-            >>> formatted_img = self._format_img(img)
-            >>> print(formatted_img.shape)
-            torch.Size([3, 100, 100])
-        """
-        if len(img.shape) < 3:
-            img = np.expand_dims(img, -1)
+        
+    def _format_img(self, img):
+        import numpy as np
+        import torch
+        import random
+    
+        # 1. Paksa menjadi np.ndarray murni (hilangkan subclass)
+        img = np.asarray(img)
+    
+        # 2. Jika grayscale → tambah channel
+        if img.ndim == 2:
+            img = img[..., None]
+    
+        # 3. Jika channel 1 → ulangi jadi 3 channel
+        if img.shape[2] == 1:
+            img = np.repeat(img, 3, axis=2)
+    
+        # 4. Jika RGBA → potong jadi RGB
+        if img.shape[2] == 4:
+            img = img[..., :3]
+    
+        # 5. Transpose dari HWC → CHW
         img = img.transpose(2, 0, 1)
-        img = np.ascontiguousarray(img[::-1] if random.uniform(0, 1) > self.bgr and img.shape[0] == 3 else img)
-        img = torch.from_numpy(img)
-        return img
+    
+        # 6. BGR flip bawaan Ultralytics
+        if img.shape[0] == 3 and random.uniform(0, 1) > self.bgr:
+            img = img[::-1]
+    
+        # 7. Pastikan kontigu di memory (WAJIB untuk torch.from_numpy)
+        img = np.ascontiguousarray(img)
+    
+        # 8. Convert ke Tensor
+        return torch.from_numpy(img)
+
+    # def _format_img(self, img: np.ndarray) -> torch.Tensor:
+    #     """Format an image for YOLO from a Numpy array to a PyTorch tensor.
+
+    #     This function performs the following operations:
+    #     1. Ensures the image has 3 dimensions (adds a channel dimension if needed).
+    #     2. Transposes the image from HWC to CHW format.
+    #     3. Optionally flips the color channels from RGB to BGR.
+    #     4. Converts the image to a contiguous array.
+    #     5. Converts the Numpy array to a PyTorch tensor.
+
+    #     Args:
+    #         img (np.ndarray): Input image as a Numpy array with shape (H, W, C) or (H, W).
+
+    #     Returns:
+    #         (torch.Tensor): Formatted image as a PyTorch tensor with shape (C, H, W).
+
+    #     Examples:
+    #         >>> import numpy as np
+    #         >>> img = np.random.rand(100, 100, 3)
+    #         >>> formatted_img = self._format_img(img)
+    #         >>> print(formatted_img.shape)
+    #         torch.Size([3, 100, 100])
+    #     """
+    #     if len(img.shape) < 3:
+    #         img = np.expand_dims(img, -1)
+    #     img = img.transpose(2, 0, 1)
+    #     img = np.ascontiguousarray(img[::-1] if random.uniform(0, 1) > self.bgr and img.shape[0] == 3 else img)
+    #     img = torch.from_numpy(img)
+    #     return img
 
     def _format_segments(
         self, instances: Instances, cls: np.ndarray, w: int, h: int

@@ -17,30 +17,59 @@ import torch
 _imshow = cv2.imshow  # copy to avoid recursion errors
 
 
+# def imread(filename: str, flags: int = cv2.IMREAD_COLOR) -> np.ndarray | None:
+#     """Read an image from a file with multilanguage filename support.
+
+#     Args:
+#         filename (str): Path to the file to read.
+#         flags (int, optional): Flag that can take values of cv2.IMREAD_*. Controls how the image is read.
+
+#     Returns:
+#         (np.ndarray | None): The read image array, or None if reading fails.
+
+#     Examples:
+#         >>> img = imread("path/to/image.jpg")
+#         >>> img = imread("path/to/image.jpg", cv2.IMREAD_GRAYSCALE)
+#     """
+#     file_bytes = np.fromfile(filename, np.uint8)
+#     if filename.endswith((".tiff", ".tif")):
+#         success, frames = cv2.imdecodemulti(file_bytes, cv2.IMREAD_UNCHANGED)
+#         if success:
+#             # Handle RGB images in tif/tiff format
+#             return frames[0] if len(frames) == 1 and frames[0].ndim == 3 else np.stack(frames, axis=2)
+#         return None
+#     else:
+#         im = cv2.imdecode(file_bytes, flags)
+#         return im[..., None] if im is not None and im.ndim == 2 else im  # Always ensure 3 dimensions
+
 def imread(filename: str, flags: int = cv2.IMREAD_COLOR) -> np.ndarray | None:
-    """Read an image from a file with multilanguage filename support.
+    """
+    Safe image reader for Kaggle / Linux environments.
+    Uses cv2.imread directly instead of np.fromfile + cv2.imdecode,
+    which avoids OpenCV buffer errors.
 
     Args:
-        filename (str): Path to the file to read.
-        flags (int, optional): Flag that can take values of cv2.IMREAD_*. Controls how the image is read.
+        filename (str): Path to the image file.
+        flags (int): cv2.IMREAD_* flags.
 
     Returns:
-        (np.ndarray | None): The read image array, or None if reading fails.
-
-    Examples:
-        >>> img = imread("path/to/image.jpg")
-        >>> img = imread("path/to/image.jpg", cv2.IMREAD_GRAYSCALE)
+        np.ndarray | None: Loaded image or None if loading fails.
     """
-    file_bytes = np.fromfile(filename, np.uint8)
-    if filename.endswith((".tiff", ".tif")):
-        success, frames = cv2.imdecodemulti(file_bytes, cv2.IMREAD_UNCHANGED)
-        if success:
-            # Handle RGB images in tif/tiff format
-            return frames[0] if len(frames) == 1 and frames[0].ndim == 3 else np.stack(frames, axis=2)
+    import cv2
+    import numpy as np
+
+    # Read using OpenCV directly (most stable)
+    img = cv2.imread(str(filename), flags)
+
+    # If reading fails
+    if img is None:
         return None
-    else:
-        im = cv2.imdecode(file_bytes, flags)
-        return im[..., None] if im is not None and im.ndim == 2 else im  # Always ensure 3 dimensions
+
+    # Ensure image always has 3 dimensions (H,W,C)
+    if img.ndim == 2:  # grayscale
+        img = img[..., None]
+
+    return img
 
 
 def imwrite(filename: str, img: np.ndarray, params: list[int] | None = None) -> bool:

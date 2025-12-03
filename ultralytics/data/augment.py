@@ -2029,74 +2029,159 @@ class Format:
         self.mask_overlap = mask_overlap
         self.batch_idx = batch_idx  # keep the batch indexes
         self.bgr = bgr
-
     def __call__(self, labels: dict[str, Any]) -> dict[str, Any]:
-        """Format image annotations for object detection, instance segmentation, and pose estimation tasks.
-
-        This method standardizes the image and instance annotations to be used by the `collate_fn` in PyTorch
-        DataLoader. It processes the input labels dictionary, converting annotations to the specified format and
-        applying normalization if required.
-
-        Args:
-            labels (dict[str, Any]): A dictionary containing image and annotation data with the following keys:
-                - 'img': The input image as a numpy array.
-                - 'cls': Class labels for instances.
-                - 'instances': An Instances object containing bounding boxes, segments, and keypoints.
-
-        Returns:
-            (dict[str, Any]): A dictionary with formatted data, including:
-                - 'img': Formatted image tensor.
-                - 'cls': Class label's tensor.
-                - 'bboxes': Bounding boxes tensor in the specified format.
-                - 'masks': Instance masks tensor (if return_mask is True).
-                - 'keypoints': Keypoints tensor (if return_keypoint is True).
-                - 'batch_idx': Batch index tensor (if batch_idx is True).
-
-        Examples:
-            >>> formatter = Format(bbox_format="xywh", normalize=True, return_mask=True)
-            >>> labels = {"img": np.random.rand(640, 640, 3), "cls": np.array([0, 1]), "instances": Instances(...)}
-            >>> formatted_labels = formatter(labels)
-            >>> print(formatted_labels.keys())
-        """
+        """Format image annotations for object detection, instance segmentation, and pose estimation tasks."""
+        import numpy as np
+        import torch
+    
         img = labels.pop("img")
         h, w = img.shape[:2]
         cls = labels.pop("cls")
         instances = labels.pop("instances")
+    
+        # convert bbox format & denormalize (tetap sama)
         instances.convert_bbox(format=self.bbox_format)
         instances.denormalize(w, h)
         nl = len(instances)
-
+    
+        # --------------------
+        # MASKS (jika ada)
+        # --------------------
         if self.return_mask:
             if nl:
                 masks, instances, cls = self._format_segments(instances, cls, w, h)
-                masks = torch.from_numpy(masks)
+                masks = np.asarray(masks)
+                masks = torch.tensor(masks, dtype=torch.float32)
             else:
                 masks = torch.zeros(
-                    1 if self.mask_overlap else nl, img.shape[0] // self.mask_ratio, img.shape[1] // self.mask_ratio
+                    1 if self.mask_overlap else nl,
+                    img.shape[0] // self.mask_ratio,
+                    img.shape[1] // self.mask_ratio,
+                    dtype=torch.float32,
                 )
             labels["masks"] = masks
+    
+        # --------------------
+        # IMG
+        # --------------------
         labels["img"] = self._format_img(img)
-        labels["cls"] = torch.from_numpy(cls) if nl else torch.zeros(nl, 1)
-        labels["bboxes"] = torch.from_numpy(instances.bboxes) if nl else torch.zeros((nl, 4))
+    
+        # --------------------
+        # CLS & BBOXES
+        # --------------------
+        cls = np.asarray(cls)
+        bboxes = np.asarray(instances.bboxes)
+    
+        if nl:
+            labels["cls"] = torch.tensor(cls, dtype=torch.float32)
+            labels["bboxes"] = torch.tensor(bboxes, dtype=torch.float32)
+        else:
+            labels["cls"] = torch.zeros((nl, 1), dtype=torch.float32)
+            labels["bboxes"] = torch.zeros((nl, 4), dtype=torch.float32)
+    
+        # --------------------
+        # KEYPOINTS (jika ada)
+        # --------------------
         if self.return_keypoint:
-            labels["keypoints"] = (
-                torch.empty(0, 3) if instances.keypoints is None else torch.from_numpy(instances.keypoints)
-            )
-            if self.normalize:
+            if instances.keypoints is None:
+                labels["keypoints"] = torch.empty(0, 3)
+            else:
+                kps = np.asarray(instances.keypoints)
+                labels["keypoints"] = torch.tensor(kps, dtype=torch.float32)
+    
+            if self.normalize and labels["keypoints"].numel():
                 labels["keypoints"][..., 0] /= w
                 labels["keypoints"][..., 1] /= h
+    
+        # --------------------
+        # OBB (rotated bbox)
+        # --------------------
         if self.return_obb:
-            labels["bboxes"] = (
-                xyxyxyxy2xywhr(torch.from_numpy(instances.segments)) if len(instances.segments) else torch.zeros((0, 5))
-            )
-        # NOTE: need to normalize obb in xywhr format for width-height consistency
-        if self.normalize:
+            if len(instances.segments):
+                seg = np.asarray(instances.segments)
+                seg_t = torch.tensor(seg, dtype=torch.float32)
+                labels["bboxes"] = xyxyxyxy2xywhr(seg_t)
+            else:
+                labels["bboxes"] = torch.zeros((0, 5), dtype=torch.float32)
+    
+        # Normalize bbox jika diminta
+        if self.normalize and labels["bboxes"].numel():
             labels["bboxes"][:, [0, 2]] /= w
             labels["bboxes"][:, [1, 3]] /= h
-        # Then we can use collate_fn
+    
+        # Batch index (dipakai collate_fn)
         if self.batch_idx:
             labels["batch_idx"] = torch.zeros(nl)
+    
         return labels
+
+    # def __call__(self, labels: dict[str, Any]) -> dict[str, Any]:
+    #     """Format image annotations for object detection, instance segmentation, and pose estimation tasks.
+
+    #     This method standardizes the image and instance annotations to be used by the `collate_fn` in PyTorch
+    #     DataLoader. It processes the input labels dictionary, converting annotations to the specified format and
+    #     applying normalization if required.
+
+    #     Args:
+    #         labels (dict[str, Any]): A dictionary containing image and annotation data with the following keys:
+    #             - 'img': The input image as a numpy array.
+    #             - 'cls': Class labels for instances.
+    #             - 'instances': An Instances object containing bounding boxes, segments, and keypoints.
+
+    #     Returns:
+    #         (dict[str, Any]): A dictionary with formatted data, including:
+    #             - 'img': Formatted image tensor.
+    #             - 'cls': Class label's tensor.
+    #             - 'bboxes': Bounding boxes tensor in the specified format.
+    #             - 'masks': Instance masks tensor (if return_mask is True).
+    #             - 'keypoints': Keypoints tensor (if return_keypoint is True).
+    #             - 'batch_idx': Batch index tensor (if batch_idx is True).
+
+    #     Examples:
+    #         >>> formatter = Format(bbox_format="xywh", normalize=True, return_mask=True)
+    #         >>> labels = {"img": np.random.rand(640, 640, 3), "cls": np.array([0, 1]), "instances": Instances(...)}
+    #         >>> formatted_labels = formatter(labels)
+    #         >>> print(formatted_labels.keys())
+    #     """
+    #     img = labels.pop("img")
+    #     h, w = img.shape[:2]
+    #     cls = labels.pop("cls")
+    #     instances = labels.pop("instances")
+    #     instances.convert_bbox(format=self.bbox_format)
+    #     instances.denormalize(w, h)
+    #     nl = len(instances)
+
+    #     if self.return_mask:
+    #         if nl:
+    #             masks, instances, cls = self._format_segments(instances, cls, w, h)
+    #             masks = torch.from_numpy(masks)
+    #         else:
+    #             masks = torch.zeros(
+    #                 1 if self.mask_overlap else nl, img.shape[0] // self.mask_ratio, img.shape[1] // self.mask_ratio
+    #             )
+    #         labels["masks"] = masks
+    #     labels["img"] = self._format_img(img)
+    #     labels["cls"] = torch.from_numpy(cls) if nl else torch.zeros(nl, 1)
+    #     labels["bboxes"] = torch.from_numpy(instances.bboxes) if nl else torch.zeros((nl, 4))
+    #     if self.return_keypoint:
+    #         labels["keypoints"] = (
+    #             torch.empty(0, 3) if instances.keypoints is None else torch.from_numpy(instances.keypoints)
+    #         )
+    #         if self.normalize:
+    #             labels["keypoints"][..., 0] /= w
+    #             labels["keypoints"][..., 1] /= h
+    #     if self.return_obb:
+    #         labels["bboxes"] = (
+    #             xyxyxyxy2xywhr(torch.from_numpy(instances.segments)) if len(instances.segments) else torch.zeros((0, 5))
+    #         )
+    #     # NOTE: need to normalize obb in xywhr format for width-height consistency
+    #     if self.normalize:
+    #         labels["bboxes"][:, [0, 2]] /= w
+    #         labels["bboxes"][:, [1, 3]] /= h
+    #     # Then we can use collate_fn
+    #     if self.batch_idx:
+    #         labels["batch_idx"] = torch.zeros(nl)
+    #     return labels
         
     def _format_img(self, img):
         import numpy as np
